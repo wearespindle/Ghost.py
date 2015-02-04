@@ -268,7 +268,6 @@ class NetworkAccessManager(QNetworkAccessManager):
             data
         )
         reply.readyRead.connect(lambda reply=reply: replyReadyRead(reply))
-        time.sleep(0.001)
         return reply
 
 
