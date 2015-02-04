@@ -1,26 +1,21 @@
-"""
-Ghost.py
---------
-
-Webkit based webclient.
-
-"""
 from setuptools import setup, find_packages
-from ghost import __version__
-
+import ghost
 
 setup(
-    name='Ghost.py',
-    version=__version__,
-    url='https://github.com/jeanphix/Ghost.py',
+    name='ghostrunner',
+    version=ghost.__version__,
+    url='https://github.com/wearespindle/ghostrunner',
     license='mit',
     author='Jean-Philippe Serafin',
     author_email='serafinjp@gmail.com',
-    description='Webkit based webclient.',
-    long_description=__doc__,
-    data_files=[('ghost', ['README.rst',])],
-    packages=find_packages(),
+    description='Ghost.py fork that focusses on running fast functional tests in Django.',
+    long_description=open('README.rst').read(),
+    data_files=[('ghost', ['README.rst', ])],
     include_package_data=True,
+    install_requires=[
+        'Django>=1.4.13',
+    ],
+    packages=find_packages(),
     zip_safe=False,
     platforms='any',
     classifiers=[

@@ -4,11 +4,13 @@ import logging
 import time
 from unittest import TestCase
 from wsgiref.simple_server import make_server
+
 from ghost import Ghost
 
 
 class ServerThread(threading.Thread):
-    """Starts given WSGI application.
+    """
+    Starts given WSGI application.
 
     :param app: The WSGI application to run.
     :param port: The port to run on.
@@ -35,16 +37,20 @@ class BaseGhostTestCase(TestCase):
     log_level = logging.DEBUG
 
     def __new__(cls, *args, **kwargs):
-        """Creates Ghost instance."""
+        """
+        Creates Ghost instance."""
         if not hasattr(cls, 'ghost'):
-            cls.ghost = Ghost(display=cls.display,
+            cls.ghost = Ghost(
+                display=cls.display,
                 wait_timeout=cls.wait_timeout,
                 viewport_size=cls.viewport_size,
-                log_level=cls.log_level, )
+                log_level=cls.log_level,
+            )
         return super(BaseGhostTestCase, cls).__new__(cls)
 
     def __call__(self, result=None):
-        """Does the required setup, doing it here
+        """
+        Does the required setup, doing it here
         means you don't have to call super.setUp
         in subclasses.
         """
@@ -68,26 +74,31 @@ class BaseGhostTestCase(TestCase):
 
 
 class GhostTestCase(BaseGhostTestCase):
-    """TestCase that provides a ghost instance and manage
+    """
+    TestCase that provides a ghost instance and manage
     an HTTPServer running a WSGI application.
     """
     server_class = ServerThread
     port = 5000
 
     def create_app(self):
-        """Returns your WSGI application for testing.
+        """
+        Returns your WSGI application for testing.
         """
         raise NotImplementedError
 
     @classmethod
     def tearDownClass(cls):
-        """Stops HTTPServer instance."""
+        """
+        Stops HTTPServer instance.
+        """
         cls.server_thread.join()
         super(GhostTestCase, cls).tearDownClass()
 
     @classmethod
     def setUpClass(cls):
-        """Starts HTTPServer instance from WSGI application.
+        """
+        Starts HTTPServer instance from WSGI application.
         """
         cls.server_thread = cls.server_class(cls.create_app(), cls.port)
         cls.server_thread.daemon = True

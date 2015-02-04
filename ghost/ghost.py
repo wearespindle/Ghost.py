@@ -1,35 +1,38 @@
-# -*- coding: utf-8 -*-
 import sys
 PY3 = sys.version > '3'
 import os
 import time
 import uuid
+from contextlib import contextmanager
 import codecs
 import logging
 import subprocess
 from functools import wraps
 try:
+    # Python 2.x
     from cookielib import Cookie, LWPCookieJar
 except ImportError:
+    # Python 3.x
     from http.cookiejar import Cookie, LWPCookieJar
-from contextlib import contextmanager
+
+
 from .logger import configure
 
-__version__ = "0.1.1"
+__version__ = "0.2.0"
 
 if PY3:
     unicode = str
     long = int
 
 
-bindings = ["PySide", "PyQt4"]
 binding = None
+bindings = ['PySide', 'PyQt5', ]
 
 
 for name in bindings:
     try:
         binding = __import__(name)
-        if name == 'PyQt4':
+        if name.startswith('PyQt5'):
             import sip
             sip.setapi('QVariant', 2)
 
@@ -38,6 +41,7 @@ for name in bindings:
 
 
 class LazyBinding(object):
+
     class __metaclass__(type):
         def __getattr__(self, name):
             return self.__class__
@@ -57,7 +61,7 @@ def _import(name):
     return module
 
 
-QtCore = _import("QtCore")
+QtCore = _import('QtCore')
 QSize = QtCore.QSize
 QByteArray = QtCore.QByteArray
 QUrl = QtCore.QUrl
@@ -66,16 +70,35 @@ QtCriticalMsg = QtCore.QtCriticalMsg
 QtDebugMsg = QtCore.QtDebugMsg
 QtFatalMsg = QtCore.QtFatalMsg
 QtWarningMsg = QtCore.QtWarningMsg
-qInstallMsgHandler = QtCore.qInstallMsgHandler
+if name == 'PyQt5':
+    qInstallMsgHandler = QtCore.qInstallMessageHandler
+else:
+    qInstallMsgHandler = QtCore.qInstallMsgHandler
 
-QtGui = _import("QtGui")
-QApplication = QtGui.QApplication
-QImage = QtGui.QImage
-QPainter = QtGui.QPainter
-QPrinter = QtGui.QPrinter
-QRegion = QtGui.QRegion
+QtGui = _import('QtGui')
 
-QtNetwork = _import("QtNetwork")
+if name == 'PyQt5':
+    QtWidgets = _import("QtWidgets")
+    QtPrintSupport = _import("QtPrintSupport")
+    QApplication = QtWidgets.QApplication
+    QImage = QtGui.QImage
+    QMainWindow = QtWidgets.QMainWindow
+    QPainter = QtGui.QPainter
+    QPrinter = QtPrintSupport.QPrinter
+    QRegion = QtGui.QRegion
+    QLineEdit = QtWidgets.QLineEdit
+    QSizePolicy = QtWidgets.QSizePolicy
+    QStyle = QtWidgets.QStyle
+else:
+    QApplication = QtGui.QApplication
+    QImage = QtGui.QImage
+    QMainWindow = QtGui.QMainWindow
+    QPainter = QtGui.QPainter
+    QPrinter = QtGui.QPrinter
+    QRegion = QtGui.QRegion
+    QLineEdit = QtGui.QLineEdit
+
+QtNetwork = _import('QtNetwork')
 QNetworkRequest = QtNetwork.QNetworkRequest
 QNetworkAccessManager = QtNetwork.QNetworkAccessManager
 QNetworkCookieJar = QtNetwork.QNetworkCookieJar
@@ -85,19 +108,30 @@ QSslConfiguration = QtNetwork.QSslConfiguration
 QSsl = QtNetwork.QSsl
 
 QtWebKit = _import('QtWebKit')
+if name == 'PyQt5':
+    QtWebKitWidgets = _import('QtWebKitWidgets')
+    QWebPage = QtWebKitWidgets.QWebPage
+    QWebView = QtWebKitWidgets.QWebView
+else:
+    QWebPage = QtWebKit.QWebPage
+    QWebView = QtWebKit.QWebView
 
 
-default_user_agent = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/535.2 " +\
-    "(KHTML, like Gecko) Chrome/15.0.874.121 Safari/535.2"
+default_user_agent = 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/535.2 ' +\
+    '(KHTML, like Gecko) Chrome/15.0.874.121 Safari/535.2'
 
 
 class Error(Exception):
-    """Base class for Ghost exceptions."""
+    """
+    Base class for Ghost exceptions.
+    """
     pass
 
 
 class TimeoutError(Error):
-    """Raised when a request times out"""
+    """
+    Raised when a request times out
+    """
     pass
 
 
@@ -105,7 +139,8 @@ class QTMessageProxy(object):
     def __init__(self, logger):
         self.logger = logger
 
-    def __call__(self, msgType, msg):
+    def __call__(self, *args):
+        msgType, msg = args[0], args[-1]
         levels = {
             QtDebugMsg: 'debug',
             QtWarningMsg: 'warn',
@@ -115,14 +150,23 @@ class QTMessageProxy(object):
         getattr(self.logger, levels[msgType])(msg)
 
 
-class GhostWebPage(QtWebKit.QWebPage):
-    """Overrides QtWebKit.QWebPage in order to intercept some graphical
+class GhostMainWindow(QMainWindow):
+    def __init__(self, page, view):
+        # TODO: Add navigation toolbars.
+        super(GhostMainWindow, self).__init__()
+        self.page = page
+        self.view = view
+
+
+class GhostWebPage(QWebPage):
+    """
+    Overrides QtWebKit.QWebPage in order to intercept some graphical
     behaviours like alert(), confirm().
     Also intercepts client side console.log().
     """
     def __init__(self, app, ghost):
         self.ghost = ghost
-        super(GhostWebPage, self).__init__(app)
+        super(GhostWebPage, self).__init__()
 
     def chooseFile(self, frame, suggested_file=None):
         filename = Ghost._upload_file
@@ -130,7 +174,9 @@ class GhostWebPage(QtWebKit.QWebPage):
         return filename
 
     def javaScriptConsoleMessage(self, message, line, source):
-        """Prints client console message in current output stream."""
+        """
+        Prints client console message in current output stream
+        ."""
         super(GhostWebPage, self).javaScriptConsoleMessage(
             message,
             line,
@@ -142,7 +188,9 @@ class GhostWebPage(QtWebKit.QWebPage):
         )
 
     def javaScriptAlert(self, frame, message):
-        """Notifies ghost for alert, then pass."""
+        """
+        Notifies ghost for alert, then pass.
+        """
         self.ghost._alert = message
         self.ghost.append_popup_message(message)
         self.ghost.logger.info("alert('%s')" % message)
@@ -153,9 +201,9 @@ class GhostWebPage(QtWebKit.QWebPage):
 
         return value
 
-    def javaScriptConfirm(self, frame, message):
-        """Checks if ghost is waiting for confirm, then returns the right
-        value.
+    def javaScript_confirm(self, frame, message):
+        """
+        Checks if ghost is waiting for confirm, then returns the right value.
         """
         if self.ghost._confirm_expected is None:
             raise Error(
@@ -167,9 +215,9 @@ class GhostWebPage(QtWebKit.QWebPage):
         self.ghost.logger.info("confirm('%s')" % message)
         return self._get_value(value)
 
-    def javaScriptPrompt(self, frame, message, defaultValue, result=None):
-        """Checks if ghost is waiting for prompt, then enters the right
-        value.
+    def javaScript_prompt(self, frame, message, defaultvalue, result=None):
+        """
+        Checks if ghost is waiting for prompt, then enters the right value.
         """
         if self.ghost._prompt_expected is None:
             raise Error(
@@ -200,7 +248,8 @@ class GhostWebPage(QtWebKit.QWebPage):
 
 
 def can_load_page(func):
-    """Decorator that specifies if user can expect page loading from
+    """
+    Decorator that specifies if user can expect page loading from
     this action. If expect_loading is set to True, ghost will wait
     for page_loaded event.
     """
@@ -218,7 +267,8 @@ def can_load_page(func):
 
 
 class HttpResource(object):
-    """Represents an HTTP resource.
+    """
+    Represents an HTTP resource.
     """
     def __init__(self, ghost, reply, content):
         self.ghost = ghost
@@ -252,28 +302,24 @@ class HttpResource(object):
 
 def replyReadyRead(reply):
     if not hasattr(reply, 'data'):
-        reply.data = ''
+        reply.data = 'empty'
 
     reply.data += reply.peek(reply.bytesAvailable())
 
 
 class NetworkAccessManager(QNetworkAccessManager):
-    """Subclass QNetworkAccessManager to always cache the reply content
+    """
+    Subclass QNetworkAccessManager to always cache the reply content
     """
     def createRequest(self, operation, request, data):
-        reply = QNetworkAccessManager.createRequest(
-            self,
-            operation,
-            request,
-            data
-        )
+        reply = QNetworkAccessManager.createRequest(self, operation, request, data)
         reply.readyRead.connect(lambda reply=reply: replyReadyRead(reply))
-        time.sleep(0.001)
         return reply
 
 
 class Ghost(object):
-    """Ghost manages a QWebPage.
+    """
+    Ghost manages a QWebPage.
 
     :param user_agent: The default User-Agent header.
     :param wait_timeout: Maximum step duration in second.
@@ -296,35 +342,18 @@ class Ghost(object):
     _upload_file = None
     _app = None
 
-    def __init__(
-        self,
-        user_agent=default_user_agent,
-        wait_timeout=8,
-        wait_callback=None,
-        log_level=logging.WARNING,
-        log_handler=logging.StreamHandler(sys.stderr),
-        display=False,
-        viewport_size=(800, 600),
-        ignore_ssl_errors=True,
-        plugins_enabled=False,
-        java_enabled=False,
-        javascript_enabled=True,
-        plugin_path=['/usr/lib/mozilla/plugins', ],
-        download_images=True,
-        show_scrollbars=True,
-        network_access_manager_class=NetworkAccessManager,
-    ):
+    def __init__(self, user_agent=default_user_agent, wait_timeout=8, wait_callback=None, log_level=logging.WARNING,
+                 log_handler=logging.StreamHandler(sys.stderr), display=False, viewport_size=(800, 600),
+                 ignore_ssl_errors=True, plugins_enabled=False, java_enabled=False, javascript_enabled=True,
+                 plugin_path=['/usr/lib/mozilla/plugins', ], download_images=True, show_scrollbars=True,
+                 network_access_manager_class=NetworkAccessManager, ):
+
         if not binding:
-            raise Exception("Ghost.py requires PySide or PyQt4")
+            raise Exception("Ghost.py requires PyQT5")
 
         self.id = str(uuid.uuid4())
 
-        self.logger = configure(
-            'ghost',
-            "Ghost(<%s>)" % self.id,
-            log_level,
-            log_handler,
-        )
+        self.logger = configure('ghost', "Ghost(<%s>)" % self.id, log_level, log_handler)
 
         self.http_resources = []
 
@@ -334,14 +363,10 @@ class Ghost(object):
         self.ignore_ssl_errors = ignore_ssl_errors
         self.loaded = True
 
-        if (
-            sys.platform.startswith('linux')
-            and 'DISPLAY' not in os.environ
-            and not hasattr(Ghost, 'xvfb')
-        ):
+        if (sys.platform.startswith('linux') and 'DISPLAY' not in os.environ and not hasattr(Ghost, 'xvfb')):
             try:
                 os.environ['DISPLAY'] = ':99'
-                Ghost.xvfb = subprocess.Popen(['Xvfb', ':99'])
+                Ghost.xvfb = subprocess.Popen(['Xvfb', ':99', '-fp', '/usr/share/fonts/X11/100dpi/', '-once'])
             except OSError:
                 raise Error('Xvfb is required to a ghost run outside ' +
                             'an X instance')
@@ -351,14 +376,7 @@ class Ghost(object):
         if not Ghost._app:
             self.logger.info('Initializing QT application')
             Ghost._app = QApplication.instance() or QApplication(['ghost'])
-            qInstallMsgHandler(QTMessageProxy(
-                configure(
-                    'qt',
-                    'QT',
-                    log_level,
-                    log_handler,
-                )
-            ))
+            qInstallMsgHandler(QTMessageProxy(configure('qt', 'QT', log_level, log_handler)))
             if plugin_path:
                 for p in plugin_path:
                     Ghost._app.addLibraryPath(p)
@@ -375,26 +393,14 @@ class Ghost(object):
             QtWebKit.QWebSettings.LocalStorageEnabled, True)
 
         self.page.setForwardUnsupportedContent(True)
-        self.page.settings().setAttribute(
-            QtWebKit.QWebSettings.AutoLoadImages, download_images)
-        self.page.settings().setAttribute(
-            QtWebKit.QWebSettings.PluginsEnabled, plugins_enabled)
-        self.page.settings().setAttribute(
-            QtWebKit.QWebSettings.JavaEnabled,
-            java_enabled,
-        )
-        self.page.settings().setAttribute(
-            QtWebKit.QWebSettings.JavascriptEnabled, javascript_enabled)
+        self.page.settings().setAttribute(QtWebKit.QWebSettings.AutoLoadImages, download_images)
+        self.page.settings().setAttribute(QtWebKit.QWebSettings.PluginsEnabled, plugins_enabled)
+        self.page.settings().setAttribute(QtWebKit.QWebSettings.JavaEnabled, java_enabled)
+        self.page.settings().setAttribute(QtWebKit.QWebSettings.JavascriptEnabled, javascript_enabled)
 
         if not show_scrollbars:
-            self.page.mainFrame().setScrollBarPolicy(
-                QtCore.Qt.Vertical,
-                QtCore.Qt.ScrollBarAlwaysOff,
-            )
-            self.page.mainFrame().setScrollBarPolicy(
-                QtCore.Qt.Horizontal,
-                QtCore.Qt.ScrollBarAlwaysOff,
-            )
+            self.page.mainFrame().setScrollBarPolicy(QtCore.Qt.Vertical, QtCore.Qt.ScrollBarAlwaysOff)
+            self.page.mainFrame().setScrollBarPolicy(QtCore.Qt.Horizontal, QtCore.Qt.ScrollBarAlwaysOff)
 
         self.set_viewport_size(*viewport_size)
 
@@ -406,31 +412,31 @@ class Ghost(object):
         self.manager = self.page.networkAccessManager()
         self.manager.finished.connect(self._request_ended)
         self.manager.sslErrors.connect(self._on_manager_ssl_errors)
+
         # Cookie jar
         self.cookie_jar = QNetworkCookieJar()
         self.manager.setCookieJar(self.cookie_jar)
+
         # User Agent
         self.page.setUserAgent(self.user_agent)
 
-        self.page.networkAccessManager().authenticationRequired\
-            .connect(self._authenticate)
-        self.page.networkAccessManager().proxyAuthenticationRequired\
-            .connect(self._authenticate)
+        self.page.networkAccessManager().authenticationRequired.connect(self._authenticate)
+        self.page.networkAccessManager().proxyAuthenticationRequired.connect(self._authenticate)
 
         self.main_frame = self.page.mainFrame()
+        self.document = self.main_frame.documentElement()
 
-        class GhostQWebView(QtWebKit.QWebView):
+        class GhostQWebView(QWebView):
             def sizeHint(self):
                 return QSize(*viewport_size)
 
         self.webview = GhostQWebView()
+        self.window = GhostMainWindow(self.page, self.webview)
 
         if plugins_enabled:
-            self.webview.settings().setAttribute(
-                QtWebKit.QWebSettings.PluginsEnabled, True)
+            self.webview.settings().setAttribute(QtWebKit.QWebSettings.PluginsEnabled, True)
         if java_enabled:
-            self.webview.settings().setAttribute(
-                QtWebKit.QWebSettings.JavaEnabled, True)
+            self.webview.settings().setAttribute(QtWebKit.QWebSettings.JavaEnabled, True)
 
         self.webview.setPage(self.page)
 
@@ -441,7 +447,8 @@ class Ghost(object):
         self.exit()
 
     def frame(self, selector=None):
-        """ Set main frame as current main frame's parent.
+        """
+        Set main frame as current main frame's parent.
 
         :param frame: An optional name or index of the child to descend to.
         """
@@ -470,7 +477,8 @@ class Ghost(object):
 
     @can_load_page
     def call(self, selector, method):
-        """Call method on element matching given selector.
+        """
+        Call method on element matching given selector.
 
         :param selector: A CSS selector to the target element.
         :param method: The name of the method to call.
@@ -480,13 +488,9 @@ class Ghost(object):
         element = self.main_frame.findFirstElement(selector)
         return element.evaluateJavaScript('this[%s]();' % repr(method))
 
-    def capture(
-        self,
-        region=None,
-        selector=None,
-        format=None,
-    ):
-        """Returns snapshot as QImage.
+    def capture(self, region=None, selector=None, format=None):
+        """
+        Returns snapshot as QImage.
 
         :param region: An optional tuple containing region as pixel
             coodinates.
@@ -529,14 +533,9 @@ class Ghost(object):
 
         return image
 
-    def capture_to(
-        self,
-        path,
-        region=None,
-        selector=None,
-        format=None,
-    ):
-        """Saves snapshot as image.
+    def capture_to(self, path, region=None, selector=None, format=None):
+        """
+        Saves snapshot as image.
 
         :param path: The destination path.
         :param region: An optional tuple containing region as pixel
@@ -551,15 +550,10 @@ class Ghost(object):
         self.capture(region=region, format=format,
                      selector=selector).save(path)
 
-    def print_to_pdf(
-        self,
-        path,
-        paper_size=(8.5, 11.0),
-        paper_margins=(0, 0, 0, 0),
-        paper_units=None,
-        zoom_factor=1.0,
-    ):
-        """Saves page as a pdf file.
+    def print_to_pdf(self, path, paper_size=(8.5, 11.0), paper_margins=(0, 0, 0, 0), paper_units=None,
+                     zoom_factor=1.0):
+        """
+        Saves page as a pdf file.
 
         See qt4 QPrinter documentation for more detailed explanations
         of options.
@@ -583,14 +577,15 @@ class Ghost(object):
         printer.setFullPage(True)
         printer.setOutputFileName(path)
         if self.webview is None:
-            self.webview = QtWebKit.QWebView()
+            self.webview = QWebView()
             self.webview.setPage(self.page)
         self.webview.setZoomFactor(zoom_factor)
         self.webview.print_(printer)
 
     @can_load_page
     def click(self, selector):
-        """Click the targeted element.
+        """
+        Click the targeted element.
 
         :param selector: A CSS3 selector to targeted element.
         """
@@ -608,7 +603,8 @@ class Ghost(object):
 
     @contextmanager
     def confirm(self, confirm=True):
-        """Statement that tells Ghost how to deal with javascript confirm().
+        """
+        Statement that tells Ghost how to deal with javascript confirm().
 
         :param confirm: A boolean or a callable to set confirmation.
         """
@@ -618,7 +614,8 @@ class Ghost(object):
 
     @property
     def content(self, to_unicode=True):
-        """Returns current frame HTML as a string.
+        """
+        Returns current frame HTML as a string.
 
         :param to_unicode: Whether to convert html to unicode or not
         """
@@ -629,20 +626,28 @@ class Ghost(object):
 
     @property
     def cookies(self):
-        """Returns all cookies."""
+        """
+        Returns all cookies.
+        """
         return self.cookie_jar.allCookies()
 
     def delete_cookies(self):
-        """Deletes all cookies."""
-        self.cookie_jar.setAllCookies([])
+        """
+        Deletes all cookies.
+        """
+        if hasattr(self, 'cookie_jar'):
+            self.cookie_jar.setAllCookies([])
 
     def clear_alert_message(self):
-        """Clears the alert message"""
+        """
+        Clears the alert message
+        """
         self._alert = None
 
     @can_load_page
     def evaluate(self, script):
-        """Evaluates script in page frame.
+        """
+        Evaluates script in page frame.
 
         :param script: The script to evaluate.
         """
@@ -651,8 +656,12 @@ class Ghost(object):
             self._release_last_resources(),
         )
 
+    def element(self, selector):
+        return self.main_frame.findFirstElement(selector)
+
     def evaluate_js_file(self, path, encoding='utf-8', **kwargs):
-        """Evaluates javascript file at given path in current frame.
+        """
+        Evaluates javascript file at given path in current frame.
         Raises native IOException in case of invalid file.
 
         :param path: The path of the file.
@@ -662,14 +671,20 @@ class Ghost(object):
             return self.evaluate(f.read(), **kwargs)
 
     def exists(self, selector):
-        """Checks if element exists for given selector.
+        """
+        Checks if element exists for given selector.
 
         :param string: The element selector.
         """
         return not self.main_frame.findFirstElement(selector).isNull()
 
     def exit(self):
-        """Exits application and related."""
+        """
+        Exits application and related.
+        """
+        if not binding:
+            return
+
         if self.display:
             self.webview.close()
         Ghost._app.quit()
@@ -681,7 +696,8 @@ class Ghost(object):
 
     @can_load_page
     def fill(self, selector, values):
-        """Fills a form with provided values.
+        """
+        Fills a form with provided values.
 
         :param selector: A CSS selector to the target form to fill.
         :param values: A dict containing the values.
@@ -697,7 +713,8 @@ class Ghost(object):
 
     @can_load_page
     def fire(self, selector, event):
-        """Fire `event` on element at `selector`
+        """
+        Fire `event` on element at `selector`
 
         :param selector: A selector to target the element.
         :param event: The name of the event to trigger.
@@ -711,7 +728,8 @@ class Ghost(object):
         """ % event)
 
     def global_exists(self, global_name):
-        """Checks if javascript global exists.
+        """
+        Checks if javascript global exists.
 
         :param global_name: The name of the global.
         """
@@ -721,63 +739,55 @@ class Ghost(object):
         )[0]
 
     def hide(self):
-        """Close the webview."""
+        """
+        Close the webview.
+        """
         try:
             self.webview.close()
         except:
             raise Error("no webview to close")
 
     def load_cookies(self, cookie_storage, keep_old=False):
-        """load from cookielib's CookieJar or Set-Cookie3 format text file.
+        """
+        Load from cookielib's CookieJar or Set-Cookie3 format text file.
 
         :param cookie_storage: file location string on disk or CookieJar
-            instance.
+                               instance.
         :param keep_old: Don't reset, keep cookies not overridden.
         """
-        def toQtCookieJar(PyCookieJar, QtCookieJar):
-            allCookies = QtCookieJar.allCookies() if keep_old else []
-            for pc in PyCookieJar:
-                qc = toQtCookie(pc)
-                allCookies.append(qc)
-            QtCookieJar.setAllCookies(allCookies)
+        def to_qt_cookie_jar(py_cookie_jar, qt_cookie_jar):
+            all_cookies = qt_cookie_jar.allCookies() if keep_old else []
+            for pc in py_cookie_jar:
+                qc = to_qt_cookie(pc)
+                all_cookies.append(qc)
+            qt_cookie_jar.setAllCookies(all_cookies)
 
-        def toQtCookie(PyCookie):
-            qc = QNetworkCookie(PyCookie.name, PyCookie.value)
-            qc.setSecure(PyCookie.secure)
-            if PyCookie.path_specified:
-                qc.setPath(PyCookie.path)
-            if PyCookie.domain != "":
-                qc.setDomain(PyCookie.domain)
-            if PyCookie.expires and PyCookie.expires != 0:
+        def to_qt_cookie(py_cookie):
+            qc = QNetworkCookie(py_cookie.name, py_cookie.value)
+            qc.setSecure(py_cookie.secure)
+            if py_cookie.path_specified:
+                qc.setPath(py_cookie.path)
+            if py_cookie.domain != "":
+                qc.setDomain(py_cookie.domain)
+            if py_cookie.expires and py_cookie.expires != 0:
                 t = QDateTime()
-                t.setTime_t(PyCookie.expires)
+                t.setTime_t(py_cookie.expires)
                 qc.setExpirationDate(t)
-            # not yet handled(maybe less useful):
-            #   py cookie.rest / QNetworkCookie.setHttpOnly()
             return qc
 
         if cookie_storage.__class__.__name__ == 'str':
             cj = LWPCookieJar(cookie_storage)
             cj.load()
-            toQtCookieJar(cj, self.cookie_jar)
+            to_qt_cookie_jar(cj, self.cookie_jar)
         elif cookie_storage.__class__.__name__.endswith('CookieJar'):
-            toQtCookieJar(cookie_storage, self.cookie_jar)
+            to_qt_cookie_jar(cookie_storage, self.cookie_jar)
         else:
             raise ValueError('unsupported cookie_storage type.')
 
-    def open(
-        self,
-        address,
-        method='get',
-        headers={},
-        auth=None,
-        body=None,
-        default_popup_response=None,
-        wait=True,
-        timeout=None,
-        client_certificate=None,
-    ):
-        """Opens a web page.
+    def open(self, address, method='get', headers={}, auth=None, body=None, default_popup_response=None, wait=True,
+             timeout=None, client_certificate=None, ):
+        """
+        Opens a web page.
 
         :param address: The resource URL.
         :param method: The Http method.
@@ -854,7 +864,8 @@ class Ghost(object):
 
     @contextmanager
     def prompt(self, value=''):
-        """Statement that tells Ghost how to deal with javascript prompt().
+        """
+        Statement that tells Ghost how to deal with javascript prompt().
 
         :param value: A string or a callable value to fill in prompt.
         """
@@ -863,7 +874,8 @@ class Ghost(object):
         self._prompt_expected = None
 
     def region_for_selector(self, selector):
-        """Returns frame region for given selector as tuple.
+        """
+        Returns frame region for given selector as tuple.
 
         :param selector: The targeted element.
         """
@@ -875,31 +887,32 @@ class Ghost(object):
         return region
 
     def save_cookies(self, cookie_storage):
-        """Save to cookielib's CookieJar or Set-Cookie3 format text file.
+        """
+        Save to cookielib's CookieJar or Set-Cookie3 format text file.
 
         :param cookie_storage: file location string or CookieJar instance.
         """
-        def toPyCookieJar(QtCookieJar, PyCookieJar):
-            for c in QtCookieJar.allCookies():
-                PyCookieJar.set_cookie(toPyCookie(c))
+        def to_py_cookie_jar(qt_cookie_jar, py_cookie_jar):
+            for c in qt_cookie_jar.allCookies():
+                py_cookie_jar.set_cookie(to_py_cookie(c))
 
-        def toPyCookie(QtCookie):
+        def to_py_cookie(qt_cookie):
             port = None
             port_specified = False
-            secure = QtCookie.isSecure()
-            name = str(QtCookie.name())
-            value = str(QtCookie.value())
-            v = str(QtCookie.path())
+            secure = qt_cookie.isSecure()
+            name = str(qt_cookie.name())
+            value = str(qt_cookie.value())
+            v = str(qt_cookie.path())
             path_specified = bool(v != "")
             path = v if path_specified else None
-            v = str(QtCookie.domain())
+            v = str(qt_cookie.domain())
             domain_specified = bool(v != "")
             domain = v
             if domain_specified:
                 domain_initial_dot = v.startswith('.')
             else:
                 domain_initial_dot = None
-            v = long(QtCookie.expirationDate().toTime_t())
+            v = long(qt_cookie.expirationDate().toTime_t())
             # Long type boundary on 32bit platfroms; avoid ValueError
             expires = 2147483647 if v > 2147483647 else v
             rest = {}
@@ -925,16 +938,17 @@ class Ghost(object):
 
         if cookie_storage.__class__.__name__ == 'str':
             cj = LWPCookieJar(cookie_storage)
-            toPyCookieJar(self.cookie_jar, cj)
+            to_py_cookie_jar(self.cookie_jar, cj)
             cj.save()
         elif cookie_storage.__class__.__name__.endswith('CookieJar'):
-            toPyCookieJar(self.cookie_jar, cookie_storage)
+            to_py_cookie_jar(self.cookie_jar, cookie_storage)
         else:
             raise ValueError('unsupported cookie_storage type.')
 
     @can_load_page
     def set_field_value(self, selector, value, blur=True):
-        """Sets the value of the field matched by given selector.
+        """
+        Sets the value of the field matched by given selector.
 
         :param selector: A CSS selector that target the field.
         :param value: The value to fill in.
@@ -1032,22 +1046,16 @@ class Ghost(object):
             raise Error('unsuported field tag')
 
         for event in ['input', 'change']:
-            self.fire(selector, event);
+            self.fire(selector, event)
 
         if blur:
             self.call(selector, 'blur')
 
         return res, ressources
 
-    def set_proxy(
-        self,
-        type_,
-        host='localhost',
-        port=8888,
-        user='',
-        password='',
-    ):
-        """Set up proxy for FURTHER connections.
+    def set_proxy(self, type_, host='localhost', port=8888, user='', password=''):
+        """
+        Set up proxy for FURTHER connections.
 
         :param type_: proxy type to use: \
             none/default/socks5/https/http.
@@ -1084,7 +1092,8 @@ class Ghost(object):
             )
 
     def set_viewport_size(self, width, height):
-        """Sets the page viewport size.
+        """
+        Sets the page viewport size.
 
         :param width: An integer that sets width pixel count.
         :param height: An integer that sets height pixel count.
@@ -1095,21 +1104,22 @@ class Ghost(object):
         self.popup_messages.append(unicode(message))
 
     def show(self):
-        """Show current page inside a QWebView.
+        """
+        Show current page inside a QWebView.
         """
         self.logger.debug('Showing webview')
         self.webview.show()
         self.sleep()
 
-    def sleep(self, value=0.1):
+    def sleep(self, value=0.01):
         started_at = time.time()
 
         while time.time() <= (started_at + value):
-            time.sleep(0.01)
             Ghost._app.processEvents()
 
     def wait_for(self, condition, timeout_message, timeout=None):
-        """Waits until condition is True.
+        """
+        Waits until condition is True.
 
         :param condition: A callable that returns the condition.
         :param timeout_message: The exception message on timeout.
@@ -1125,7 +1135,8 @@ class Ghost(object):
                 self.wait_callback()
 
     def wait_for_alert(self, timeout=None):
-        """Waits for main frame alert().
+        """
+        Waits for main frame alert().
 
         :param timeout: An optional timeout.
         """
@@ -1136,7 +1147,8 @@ class Ghost(object):
         return msg, self._release_last_resources()
 
     def wait_for_page_loaded(self, timeout=None):
-        """Waits until page is loaded, assumed that a page as been requested.
+        """
+        Waits until page is loaded, assumed that a page as been requested.
 
         :param timeout: An optional timeout.
         """
@@ -1157,7 +1169,8 @@ class Ghost(object):
         return page, resources
 
     def wait_for_selector(self, selector, timeout=None):
-        """Waits until selector match an element on the frame.
+        """
+        Waits until selector match an element on the frame.
 
         :param selector: The selector to wait for.
         :param timeout: An optional timeout.
@@ -1170,7 +1183,8 @@ class Ghost(object):
         return True, self._release_last_resources()
 
     def wait_while_selector(self, selector, timeout=None):
-        """Waits until the selector no longer matches an element on the frame.
+        """
+        Waits until the selector no longer matches an element on the frame.
 
         :param selector: The selector to wait for.
         :param timeout: An optional timeout.
@@ -1183,7 +1197,8 @@ class Ghost(object):
         return True, self._release_last_resources()
 
     def wait_for_text(self, text, timeout=None):
-        """Waits until given text appear on main frame.
+        """
+        Waits until given text appear on main frame.
 
         :param text: The text to wait for.
         :param timeout: An optional timeout.
@@ -1196,7 +1211,8 @@ class Ghost(object):
         return True, self._release_last_resources()
 
     def _authenticate(self, mix, authenticator):
-        """Called back on basic / proxy http auth.
+        """
+        Called back on basic / proxy http auth.
 
         :param mix: The QNetworkReply or QNetworkProxy object.
         :param authenticator: The QAuthenticator object.
@@ -1208,18 +1224,21 @@ class Ghost(object):
             self._auth_attempt += 1
 
     def _page_loaded(self):
-        """Called back when page is loaded.
+        """
+        Called back when page is loaded.
         """
         self.loaded = True
         self.sleep()
 
     def _page_load_started(self):
-        """Called back when page load started.
+        """
+        Called back when page load started.
         """
         self.loaded = False
 
     def _release_last_resources(self):
-        """Releases last loaded resources.
+        """
+        Releases last loaded resources.
 
         :return: The released resources.
         """
@@ -1228,7 +1247,8 @@ class Ghost(object):
         return last_resources
 
     def _request_ended(self, reply):
-        """Adds an HttpResource object to http_resources.
+        """
+        Adds an HttpResource object to http_resources.
 
         :param reply: The QNetworkReply object.
         """
@@ -1259,7 +1279,8 @@ class Ghost(object):
             lambda reply=reply: self._reply_download_content(reply))
 
     def _reply_download_content(self, reply):
-        """Adds an HttpResource object to http_resources with unsupported
+        """
+        Adds an HttpResource object to http_resources with unsupported
         content.
 
         :param reply: The QNetworkReply object.

@@ -1,27 +1,41 @@
-ghost.py
-========
+About
+=====
 
-.. image:: https://drone.io/github.com/jeanphix/Ghost.py/status.png
-   :target: https://drone.io/github.com/jeanphix/Ghost.py/latest
+Ghostrunner is a fork of ghost.py; a webkit web client written in python. It was
+forked to suit our needs for a reliable fast browser tester that worked well
+with Django. Ghostrunner features:
 
+* Django LiveServerTestCase with transaction support (sqlite)
+* PyQT5 support, running a more recent, less buggy, QtWebkit version.
 
-ghost.py is a webkit web client written in python::
-
-    from ghost import Ghost
-    ghost = Ghost()
-    page, extra_resources = ghost.open("http://jeanphix.me")
-    assert page.http_status==200 and 'jeanphix' in ghost.content
-
-
-Installation
-------------
-
-ghost.py requires either PySide_ (prefered) or PyQt_ Qt_ bindings::
-
-    pip install pyside
-    pip install ghost.py --pre
+Ghostrunner requires PyQT5 to work properly. PySide still uses Qt4, which
+segfaults randomly during tests. This is probably related to an old version
+of QtWebkit.
 
 
-.. _PySide: https://pyside.github.io/
-.. _PyQt: http://www.riverbankcomputing.co.uk/software/pyqt/intro
-.. _Qt: http://qt-project.org/
+Usage
+=====
+1. Install PyQt5
+
+::
+
+    sudo pacman -S pyqt5-common python2-pyqt5 # archlinux
+
+2. Try the ghostrunner_example repo for a quick setup
+
+::
+
+    cd ~/projects
+    git clone git@github.com:wearespindle/ghostrunner_example.git
+    cd ghostrunner_example
+    virtualenv2 .
+    . ./bin/activate
+    pip install -r requirements.txt
+    # This seems to be required for virtualenv...
+    cp -R /usr/lib/python2.7/site-packages/PyQt5 ./lib/python2.7/site-packages/
+    cp /usr/lib/python2.7/site-packages/sip.so ./lib/python2.7/site-packages/
+    cd example
+    GHOST_DISPLAY=1 ./manage.py test --verbosity=2
+
+This should show feedback from two simple tests. Documentation is a bit sparse for now. Checkout ghost.test.testcases for more
+information about the TestCase methods that ghost provides.
