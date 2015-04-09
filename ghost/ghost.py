@@ -340,7 +340,7 @@ class Ghost(object):
         ):
             try:
                 os.environ['DISPLAY'] = ':99'
-                Ghost.xvfb = subprocess.Popen(['Xvfb', ':99'])
+                Ghost.xvfb = subprocess.Popen(['Xvfb', ':99', '-fp', '/usr/share/fonts/X11/100dpi/'])
             except OSError:
                 raise Error('Xvfb is required to a ghost run outside ' +
                             'an X instance')
