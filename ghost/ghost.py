@@ -26,7 +26,8 @@ if PY3:
 
 
 binding = None
-bindings = ['PySide', 'PyQt5', ]
+# QT5 is currently only available with PyQt5.
+bindings = ['PyQt5', ]
 
 
 for name in bindings:
@@ -38,6 +39,7 @@ for name in bindings:
 
     except ImportError:
         continue
+    break
 
 
 class LazyBinding(object):
@@ -70,34 +72,19 @@ QtCriticalMsg = QtCore.QtCriticalMsg
 QtDebugMsg = QtCore.QtDebugMsg
 QtFatalMsg = QtCore.QtFatalMsg
 QtWarningMsg = QtCore.QtWarningMsg
-if name == 'PyQt5':
-    qInstallMsgHandler = QtCore.qInstallMessageHandler
-else:
-    qInstallMsgHandler = QtCore.qInstallMsgHandler
-
+qInstallMsgHandler = QtCore.qInstallMessageHandler
 QtGui = _import('QtGui')
-
-if name == 'PyQt5':
-    QtWidgets = _import("QtWidgets")
-    QtPrintSupport = _import("QtPrintSupport")
-    QApplication = QtWidgets.QApplication
-    QImage = QtGui.QImage
-    QMainWindow = QtWidgets.QMainWindow
-    QPainter = QtGui.QPainter
-    QPrinter = QtPrintSupport.QPrinter
-    QRegion = QtGui.QRegion
-    QLineEdit = QtWidgets.QLineEdit
-    QSizePolicy = QtWidgets.QSizePolicy
-    QStyle = QtWidgets.QStyle
-else:
-    QApplication = QtGui.QApplication
-    QImage = QtGui.QImage
-    QMainWindow = QtGui.QMainWindow
-    QPainter = QtGui.QPainter
-    QPrinter = QtGui.QPrinter
-    QRegion = QtGui.QRegion
-    QLineEdit = QtGui.QLineEdit
-
+QtWidgets = _import('QtWidgets')
+QtPrintSupport = _import('QtPrintSupport')
+QApplication = QtWidgets.QApplication
+QImage = QtGui.QImage
+QMainWindow = QtWidgets.QMainWindow
+QPainter = QtGui.QPainter
+QPrinter = QtPrintSupport.QPrinter
+QRegion = QtGui.QRegion
+QLineEdit = QtWidgets.QLineEdit
+QSizePolicy = QtWidgets.QSizePolicy
+QStyle = QtWidgets.QStyle
 QtNetwork = _import('QtNetwork')
 QNetworkRequest = QtNetwork.QNetworkRequest
 QNetworkAccessManager = QtNetwork.QNetworkAccessManager
@@ -108,13 +95,9 @@ QSslConfiguration = QtNetwork.QSslConfiguration
 QSsl = QtNetwork.QSsl
 
 QtWebKit = _import('QtWebKit')
-if name == 'PyQt5':
-    QtWebKitWidgets = _import('QtWebKitWidgets')
-    QWebPage = QtWebKitWidgets.QWebPage
-    QWebView = QtWebKitWidgets.QWebView
-else:
-    QWebPage = QtWebKit.QWebPage
-    QWebView = QtWebKit.QWebView
+QtWebKitWidgets = _import('QtWebKitWidgets')
+QWebPage = QtWebKitWidgets.QWebPage
+QWebView = QtWebKitWidgets.QWebView
 
 
 default_user_agent = 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/535.2 ' +\
@@ -175,8 +158,8 @@ class GhostWebPage(QWebPage):
 
     def javaScriptConsoleMessage(self, message, line, source):
         """
-        Prints client console message in current output stream
-        ."""
+        Prints client console message in current output stream.
+        """
         super(GhostWebPage, self).javaScriptConsoleMessage(
             message,
             line,
@@ -346,7 +329,7 @@ class Ghost(object):
                  log_handler=logging.StreamHandler(sys.stderr), display=False, viewport_size=(800, 600),
                  ignore_ssl_errors=True, plugins_enabled=False, java_enabled=False, javascript_enabled=True,
                  plugin_path=['/usr/lib/mozilla/plugins', ], download_images=True, show_scrollbars=True,
-                 network_access_manager_class=NetworkAccessManager, ):
+                 network_access_manager_class=NetworkAccessManager, web_page_class=GhostWebPage):
 
         if not binding:
             raise Exception("Ghost.py requires PyQT5")
@@ -366,7 +349,8 @@ class Ghost(object):
         if (sys.platform.startswith('linux') and 'DISPLAY' not in os.environ and not hasattr(Ghost, 'xvfb')):
             try:
                 os.environ['DISPLAY'] = ':99'
-                Ghost.xvfb = subprocess.Popen(['Xvfb', ':99', '-fp', '/usr/share/fonts/X11/100dpi/', '-once'])
+                process = ['Xvfb', ':99', '-pixdepths', '32', '-fp', '/usr/share/fonts/X11/100dpi/', '-once']
+                Ghost.xvfb = subprocess.Popen(process, stdout=open(os.devnull, 'w'), stderr=subprocess.STDOUT)
             except OSError:
                 raise Error('Xvfb is required to a ghost run outside ' +
                             'an X instance')
@@ -382,7 +366,7 @@ class Ghost(object):
                     Ghost._app.addLibraryPath(p)
 
         self.popup_messages = []
-        self.page = GhostWebPage(Ghost._app, self)
+        self.page = web_page_class(Ghost._app, self)
 
         if network_access_manager_class is not None:
             self.page.setNetworkAccessManager(network_access_manager_class())
@@ -501,15 +485,20 @@ class Ghost(object):
         if format is None:
             format = QImage.Format_ARGB32_Premultiplied
 
-        self.main_frame.setScrollBarPolicy(
-            QtCore.Qt.Vertical,
-            QtCore.Qt.ScrollBarAlwaysOff,
-        )
-        self.main_frame.setScrollBarPolicy(
-            QtCore.Qt.Horizontal,
-            QtCore.Qt.ScrollBarAlwaysOff,
-        )
-        self.page.setViewportSize(self.main_frame.contentsSize())
+        self.main_frame.setScrollBarPolicy(QtCore.Qt.Vertical, QtCore.Qt.ScrollBarAlwaysOff)
+        self.main_frame.setScrollBarPolicy(QtCore.Qt.Horizontal, QtCore.Qt.ScrollBarAlwaysOff)
+
+        frame_size = self.main_frame.contentsSize()
+        max_size = 23170 * 23170
+        if frame_size.height() * frame_size.width() > max_size:
+            self.logger.warn("Frame size is too large.")
+            default_size = self.page.viewportSize()
+            if default_size.height() * default_size.width() > max_size:
+                return None
+        else:
+            self.page.setViewportSize(self.main_frame.contentsSize())
+        self.logger.info("Frame size -> " + str(self.page.viewportSize()))
+
         image = QImage(self.page.viewportSize(), format)
         painter = QPainter(image)
 
@@ -819,23 +808,20 @@ class Ghost(object):
         if client_certificate:
             ssl_conf = QSslConfiguration.defaultConfiguration()
 
-            if "certificate_path" in client_certificate:
+            if 'certificate_path' in client_certificate:
                 try:
                     certificate = QtNetwork.QSslCertificate.fromPath(
-                        client_certificate["certificate_path"],
+                        client_certificate['certificate_path'],
                         QSsl.Pem,
                     )[0]
                 except IndexError:
-                    raise Error(
-                        "Can't find certicate in %s"
-                        % client_certificate["certificate_path"]
-                    )
+                    raise Error('Can\'t find certicate in %s' % client_certificate['certificate_path'])
 
                 ssl_conf.setLocalCertificate(certificate)
 
-            if "key_path" in client_certificate:
+            if 'key_path' in client_certificate:
                 private_key = QtNetwork.QSslKey(
-                    open(client_certificate["key_path"]).read(),
+                    open(client_certificate['key_path']).read(),
                     QSsl.Rsa,
                 )
                 ssl_conf.setPrivateKey(private_key)
@@ -917,24 +903,8 @@ class Ghost(object):
             expires = 2147483647 if v > 2147483647 else v
             rest = {}
             discard = False
-            return Cookie(
-                0,
-                name,
-                value,
-                port,
-                port_specified,
-                domain,
-                domain_specified,
-                domain_initial_dot,
-                path,
-                path_specified,
-                secure,
-                expires,
-                discard,
-                None,
-                None,
-                rest,
-            )
+            return Cookie(0, name, value, port, port_specified, domain, domain_specified, domain_initial_dot, path,
+                          path_specified, secure, expires, discard, None, None, rest)
 
         if cookie_storage.__class__.__name__ == 'str':
             cj = LWPCookieJar(cookie_storage)
@@ -1001,44 +971,27 @@ class Ghost(object):
 
         tag_name = str(element.tagName()).lower()
 
-        if tag_name == "select":
+        if tag_name == 'select':
             _set_select_value(element, value)
-        elif tag_name == "textarea":
+        elif tag_name == 'textarea':
             _set_textarea_value(element, value)
-        elif tag_name == "input":
+        elif tag_name == 'input':
             type_ = str(element.attribute('type')).lower()
-            if type_ in [
-                "color",
-                "date",
-                "datetime",
-                "datetime-local",
-                "email",
-                "hidden",
-                "month",
-                "number",
-                "password",
-                "range",
-                "search",
-                "tel",
-                "text",
-                "time",
-                "url",
-                "week",
-                "",
-            ]:
+            if type_ in ['color', 'date', 'datetime', 'datetime-local', 'email', 'hidden', 'month', 'number',
+                         'password', 'range', 'search', 'tel', 'text', 'time', 'url', 'week', '']:
                 _set_text_value(element, value)
-            elif type_ == "checkbox":
+            elif type_ == 'checkbox':
                 els = self.main_frame.findAllElements(selector)
                 if els.count() > 1:
                     _set_checkboxes_value(els, value)
                 else:
                     _set_checkbox_value(element, value)
-            elif type_ == "radio":
+            elif type_ == 'radio':
                 _set_radio_value(
                     self.main_frame.findAllElements(selector),
                     value,
                 )
-            elif type_ == "file":
+            elif type_ == 'file':
                 Ghost._upload_file = value
                 res, resources = self.click(selector)
                 Ghost._upload_file = None
@@ -1297,7 +1250,7 @@ class Ghost(object):
         if self.ignore_ssl_errors:
             reply.ignoreSslErrors()
         else:
-            self.warn('SSL certificate error: %s' % url)
+            self.logger.warn('SSL certificate error: %s' % url)
 
     def __enter__(self):
         return self
