@@ -30,6 +30,31 @@ binding = None
 bindings = ['PyQt5', ]
 
 
+def patch_broken_pipe_error():
+    """
+    Monkey Patch BaseServer.handle_error to not write a stacktrace to stderr
+    on broken pipe. See http://stackoverflow.com/a/7913160
+    """
+    import sys
+    from SocketServer import BaseServer
+
+    handle_error = BaseServer.handle_error
+
+    def my_handle_error(self, request, client_address):
+        type, err, tb = sys.exc_info()
+        # there might be better ways to detect the specific erro
+        if repr(err) == "error(32, 'Broken pipe')":
+            # you may ignore it...
+            logging.getLogger('mylog').warn(err)
+        else:
+            handle_error(self, request, client_address)
+
+    BaseServer.handle_error = my_handle_error
+
+
+patch_broken_pipe_error()
+
+
 for name in bindings:
     try:
         binding = __import__(name)
@@ -243,8 +268,7 @@ def can_load_page(func):
         if expect_loading:
             self.loaded = False
             func(self, *args, **kwargs)
-            return self.wait_for_page_loaded(
-                timeout=kwargs.pop('timeout', None))
+            return self.wait_for_page_loaded(timeout=kwargs.pop('timeout', None))
         return func(self, *args, **kwargs)
     return wrapper
 
@@ -253,33 +277,32 @@ class HttpResource(object):
     """
     Represents an HTTP resource.
     """
-    def __init__(self, ghost, reply, content):
-        self.ghost = ghost
-        self.url = reply.url().toString()
+    def __init__(self, reply, cache, content=None):
+        if hasattr(reply, 'url'):
+            self.url = reply.url().toString()
+        else:
+            return reply
         self.content = content
-        try:
-            self.content = unicode(content)
-        except UnicodeDecodeError:
-            self.content = content
+        # TODO: in some request reply.attribute(QNetworkRequest.SourceIsFromCacheAttribute)
+        # returns None. I'm not sure why that is happening.
+        is_from_cache = reply.attribute(QNetworkRequest.SourceIsFromCacheAttribute)
+        self.is_from_cache = False if is_from_cache is None else is_from_cache
+        if self.content is None:
+            # Tries to get back content from cache
+            buffer = cache.data(QUrl(self.url))
+            if buffer is not None:
+                content = buffer.readAll()
+                try:
+                    self.content = unicode(content)
+                except UnicodeDecodeError:
+                    self.content = content
+
         self.http_status = reply.attribute(
             QNetworkRequest.HttpStatusCodeAttribute)
-        self.ghost.logger.info(
-            "Resource loaded: %s %s" % (self.url, self.http_status)
-        )
+
         self.headers = {}
         for header in reply.rawHeaderList():
-            try:
-                self.headers[unicode(header)] = unicode(
-                    reply.rawHeader(header))
-            except UnicodeDecodeError:
-                # it will lose the header value,
-                # but at least not crash the whole process
-                self.ghost.logger.error(
-                    "Invalid characters in header {0}={1}".format(
-                        header,
-                        reply.rawHeader(header),
-                    )
-                )
+            self.headers[unicode(header)] = unicode(reply.rawHeader(header))
         self._reply = reply
 
 
@@ -297,6 +320,7 @@ class NetworkAccessManager(QNetworkAccessManager):
     def createRequest(self, operation, request, data):
         reply = QNetworkAccessManager.createRequest(self, operation, request, data)
         reply.readyRead.connect(lambda reply=reply: replyReadyRead(reply))
+        time.sleep(0.01)
         return reply
 
 
@@ -329,7 +353,7 @@ class Ghost(object):
                  log_handler=logging.StreamHandler(sys.stderr), display=False, viewport_size=(800, 600),
                  ignore_ssl_errors=True, plugins_enabled=False, java_enabled=False, javascript_enabled=True,
                  plugin_path=['/usr/lib/mozilla/plugins', ], download_images=True, show_scrollbars=True,
-                 network_access_manager_class=NetworkAccessManager, web_page_class=GhostWebPage):
+                 network_manager=NetworkAccessManager, web_page_class=GhostWebPage):
 
         if not binding:
             raise Exception("Ghost.py requires PyQT5")
@@ -368,8 +392,9 @@ class Ghost(object):
         self.popup_messages = []
         self.page = web_page_class(Ghost._app, self)
 
-        if network_access_manager_class is not None:
-            self.page.setNetworkAccessManager(network_access_manager_class())
+        if network_manager is not None:
+            self.network_manager = network_manager()
+            self.page.setNetworkAccessManager(self.network_manager)
 
         QtWebKit.QWebSettings.setMaximumPagesInCache(0)
         QtWebKit.QWebSettings.setObjectCacheCapacities(0, 0, 0)
@@ -580,15 +605,7 @@ class Ghost(object):
         """
         if not self.exists(selector):
             raise Error("Can't find element to click")
-        return self.evaluate("""
-            (function () {
-                var element = document.querySelector(%s);
-                var evt = document.createEvent("MouseEvents");
-                evt.initMouseEvent("click", true, true, window, 1, 1, 1, 1, 1,
-                    false, false, false, false, 0, element);
-                return element.dispatchEvent(evt);
-            })();
-        """ % repr(selector))
+        return self.evaluate("document.querySelector('%s').dispatchEvent(new Event('click'));" % selector)
 
     @contextmanager
     def confirm(self, confirm=True):
@@ -626,6 +643,9 @@ class Ghost(object):
         """
         if hasattr(self, 'cookie_jar'):
             self.cookie_jar.setAllCookies([])
+
+    def delete_cache(self):
+        self.network_manager.cache().clear()
 
     def clear_alert_message(self):
         """
@@ -829,11 +849,12 @@ class Ghost(object):
             QSslConfiguration.setDefaultConfiguration(ssl_conf)
 
         request = QNetworkRequest(QUrl(address))
-        request.CacheLoadControl(0)
+        request.CacheLoadControl(QNetworkRequest.PreferCache)
         for header in headers:
             request.setRawHeader(header, headers[header])
         self._auth = auth
-        self._auth_attempt = 0  # Avoids reccursion
+        # This avoids recursion.
+        self._auth_attempt = 0
 
         self.main_frame.load(request, method, body)
         self.loaded = False
@@ -1105,8 +1126,7 @@ class Ghost(object):
 
         :param timeout: An optional timeout.
         """
-        self.wait_for(lambda: self.loaded,
-                      'Unable to load requested page', timeout)
+        self.wait_for(lambda: self.loaded, 'Unable to load requested page', timeout)
         resources = self._release_last_resources()
         page = None
 
@@ -1128,11 +1148,7 @@ class Ghost(object):
         :param selector: The selector to wait for.
         :param timeout: An optional timeout.
         """
-        self.wait_for(
-            lambda: self.exists(selector),
-            'Can\'t find element matching "%s"' % selector,
-            timeout,
-        )
+        self.wait_for(lambda: self.exists(selector), 'Can\'t find element matching "%s"' % selector, timeout)
         return True, self._release_last_resources()
 
     def wait_while_selector(self, selector, timeout=None):
@@ -1156,11 +1172,7 @@ class Ghost(object):
         :param text: The text to wait for.
         :param timeout: An optional timeout.
         """
-        self.wait_for(
-            lambda: text in self.content,
-            'Can\'t find "%s" in current frame' % text,
-            timeout,
-        )
+        self.wait_for(lambda: text in self.content, 'Can\'t find "%s" in current frame' % text, timeout)
         return True, self._release_last_resources()
 
     def _authenticate(self, mix, authenticator):
@@ -1181,7 +1193,6 @@ class Ghost(object):
         Called back when page is loaded.
         """
         self.loaded = True
-        self.sleep()
 
     def _page_load_started(self):
         """
@@ -1205,31 +1216,17 @@ class Ghost(object):
 
         :param reply: The QNetworkReply object.
         """
+        content = reply.readAll()
 
         if reply.attribute(QNetworkRequest.HttpStatusCodeAttribute):
-            self.logger.debug("[%s] bytesAvailable()= %s" % (
-                str(reply.url()),
-                reply.bytesAvailable()
-            ))
-
-            try:
-                content = reply.data
-            except AttributeError:
-                content = reply.readAll()
-
-            self.http_resources.append(HttpResource(
-                self,
-                reply,
-                content=content,
-            ))
+            cache = self.network_manager.cache()
+            http_resource = HttpResource(reply, cache, content)
+            self.http_resources.append(http_resource)
 
     def _unsupported_content(self, reply):
-        self.logger.info("Unsupported content %s" % (
-            str(reply.url()),
-        ))
+        self.logger.info("Unsupported content %s" % (str(reply.url())))
 
-        reply.readyRead.connect(
-            lambda reply=reply: self._reply_download_content(reply))
+        reply.readyRead.connect(lambda reply=reply: self._reply_download_content(reply))
 
     def _reply_download_content(self, reply):
         """
@@ -1239,11 +1236,7 @@ class Ghost(object):
         :param reply: The QNetworkReply object.
         """
         if reply.attribute(QNetworkRequest.HttpStatusCodeAttribute):
-            self.http_resources.append(HttpResource(
-                self,
-                reply,
-                reply.readAll(),
-            ))
+            self.http_resources.append(HttpResource(self, reply, reply.readAll()))
 
     def _on_manager_ssl_errors(self, reply, errors):
         url = unicode(reply.url().toString())

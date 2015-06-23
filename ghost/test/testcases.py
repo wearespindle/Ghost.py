@@ -108,8 +108,12 @@ class LiveServerTestCase(LiveServerTestCase, TestCase):
         # There may not be a 'server_thread' attribute if setUpClass() for some
         # reasons has raised an exception.
         if hasattr(cls, 'server_thread'):
-            # Terminate the live server's thread.
-            cls.server_thread.join()
+            # Terminate the live server's thread. Fail silently if it fails
+            # to quit within 2 seconds.
+            try:
+                cls.server_thread.join()
+            except RuntimeError:
+                pass
 
         for conn in connections.all():
             if conn.settings_dict['ENGINE'] == 'django.db.backends.sqlite3':

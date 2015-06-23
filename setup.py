@@ -8,7 +8,7 @@ setup(
     license='mit',
     author='Jean-Philippe Serafin',
     author_email='serafinjp@gmail.com',
-    description='Ghost.py fork that focusses on running fast functional tests in Django.',
+    description='Ghost.py fork that focuses on running fast functional tests in Django.',
     long_description=open('README.rst').read(),
     data_files=[('ghost', ['README.rst', ])],
     include_package_data=True,
