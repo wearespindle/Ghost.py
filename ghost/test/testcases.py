@@ -3,16 +3,12 @@ import logging
 import os
 
 from django.core import signals
-from django.core.exceptions import ImproperlyConfigured
-from django.db import connection, connections, close_connection
 from django.test.client import Client
-from django.test.testcases import LiveServerTestCase, LiveServerThread, TestCase
-from django.utils.unittest import skipIf
+from django.test.testcases import LiveServerTestCase, TestCase
 
 from ghost import Ghost
 
 
-@skipIf(connection.vendor != 'sqlite', 'Requires SQLite')
 class LiveServerTestCase(LiveServerTestCase, TestCase):
     """
     LiveServerTestCase using Ghost.py and transaction rollbacks.
@@ -51,50 +47,14 @@ class LiveServerTestCase(LiveServerTestCase, TestCase):
         Django's LiveServerTestCase setupClass but without sqlite :memory check
         and with additional Ghost initialization.
         """
-        # Prevents transaction rollback errors from the server thread.
-        signals.request_finished.disconnect(close_connection)
-
-        connections_override = {}
-        for conn in connections.all():
-            # If using in-memory sqlite databases, pass the connections to
-            # the server thread.
-            if conn.settings_dict['ENGINE'] == 'django.db.backends.sqlite3':
-                # Explicitly enable thread-shareability for this connection
-                conn.allow_thread_sharing = True
-                connections_override[conn.alias] = conn
-
-        # Launch the live server's thread. Use ports 9000-9200 as default range.
-        specified_address = os.environ.get('DJANGO_LIVE_TEST_SERVER_ADDRESS', 'localhost:9000-9200')
-
-        # The specified ports may be of the form '8000-8010,8080,9200-9300'
-        # i.e. a comma-separated list of ports or ranges of ports, so we break
-        # it down into a detailed list of all possible ports.
-        possible_ports = []
+        # Prevents transaction rollback errors from the server thread. Removed
+        # as from Django 1.8.
         try:
-            host, port_ranges = specified_address.split(':')
-            for port_range in port_ranges.split(','):
-                # A port range can be of either form: '8000' or '8000-8010'.
-                extremes = map(int, port_range.split('-'))
-                assert len(extremes) in [1, 2]
-                if len(extremes) == 1:
-                    # Port range of the form '8000'
-                    possible_ports.append(extremes[0])
-                else:
-                    # Port range of the form '8000-8010'
-                    for port in range(extremes[0], extremes[1] + 1):
-                        possible_ports.append(port)
-        except Exception:
-            raise ImproperlyConfigured('Invalid address ("%s") for live server.' % specified_address)
-        cls.server_thread = LiveServerThread(
-            host, possible_ports, connections_override)
-        cls.server_thread.daemon = True
-        cls.server_thread.start()
-
-        # Wait for the live server to be ready
-        cls.server_thread.is_ready.wait()
-        if cls.server_thread.error:
-            raise cls.server_thread.error
-
+            from django.db import close_connection
+            signals.request_finished.disconnect(close_connection)
+        except ImportError:
+            pass
+        super(LiveServerTestCase, cls).setUpClass()
         # Server is up and running, start up a Ghost instance.
         if not hasattr(cls, 'ghost'):
             cls.ghost = Ghost(display=cls.display, wait_timeout=cls.wait_timeout, log_level=cls.log_level)
@@ -105,20 +65,7 @@ class LiveServerTestCase(LiveServerTestCase, TestCase):
         Django's LiveServerTestCase tearDownClass, but without sqlite :memory
         check and shuts down the Ghost instance.
         """
-        # There may not be a 'server_thread' attribute if setUpClass() for some
-        # reasons has raised an exception.
-        if hasattr(cls, 'server_thread'):
-            # Terminate the live server's thread. Fail silently if it fails
-            # to quit within 2 seconds.
-            try:
-                cls.server_thread.join()
-            except RuntimeError:
-                pass
-
-        for conn in connections.all():
-            if conn.settings_dict['ENGINE'] == 'django.db.backends.sqlite3':
-                conn.allow_thread_sharing = False
-
+        super(LiveServerTestCase, cls).tearDownClass()
         cls.ghost.exit()
 
     def fill_form(self, form_selector, params, submit=True):

@@ -8,3 +8,4 @@ dist
 *.swo
 .tox
 .idea
+ghostrunner.egg-info
