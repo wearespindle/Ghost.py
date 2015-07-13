@@ -1,9 +1,9 @@
 About
 =====
 
-Ghostrunner is a fork of ghost.py; a webkit web client written in python. It was
-forked to suit our needs for a reliable fast browser tester that worked well
-with Django. Ghostrunner features:
+Ghostrunner is a fork of ghost.py(https://github.com/jeanphix/Ghost.py); 
+a webkit web client written in python. It was forked to suit our needs for a 
+reliable fast browser tester that worked well with Django. Ghostrunner features:
 
 * Django LiveServerTestCase with transaction support (sqlite)
 * PyQT5 support, running a more recent, less buggy, QtWebkit version.

@@ -13,13 +13,13 @@ setup(
     data_files=[('ghost', ['README.rst', ])],
     include_package_data=True,
     install_requires=[
-        'Django>=1.4.13',
+        'Django>=1.4',
     ],
     packages=find_packages(),
     zip_safe=False,
     platforms='any',
     classifiers=[
-        'Development Status :: 5 - Production/Stable',
+        'Development Status :: 3 - Alpha',
         'Environment :: Web Environment',
         'Intended Audience :: Developers',
         'License :: OSI Approved :: MIT License',
