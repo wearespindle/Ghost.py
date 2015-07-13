@@ -1,7 +1,7 @@
 include README.rst *.py
 include ghost/ghost.py
-include ghost/ext/django/test.py
-include ghost/test/django.py
+include ghost/test/testcases.py
+include ghost/test/__init__.py
 recursive-include docs *
 recursive-exclude docs *.pyc
 recursive-exclude docs *.pyo

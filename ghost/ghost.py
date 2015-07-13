@@ -344,7 +344,7 @@ class Ghost(object):
         self.ignore_ssl_errors = ignore_ssl_errors
         self.loaded = True
 
-        if (sys.platform.startswith('linux') and 'DISPLAY' not in os.environ and not hasattr(Ghost, 'xvfb')):
+        if sys.platform.startswith('linux') and ('DISPLAY' not in os.environ or os.environ['DISPLAY'] == ':99') and not hasattr(Ghost, 'xvfb'):
             try:
                 os.environ['DISPLAY'] = ':99'
                 process = ['Xvfb', ':99', '-pixdepths', '32', '-fp', '/usr/share/fonts/X11/100dpi/', '-once']

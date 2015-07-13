@@ -1,0 +1,16 @@
+ghostrunnerx11:
+  build: .
+  command: python ./tests/manage.py test
+  volumes:
+    - .:/home/docker/ghostrunner
+    - /tmp/.X11-unix:/tmp/.X11-unix/:ro  # Shares X socket with docker
+    - /etc/machine-id:/etc/machine-id
+  environment:
+    - DBUS_SESSION_BUS_ADDRESS=$DBUS_SESSION_BUS_ADDRESS
+    - GHOST_DISPLAY=1
+
+ghostrunner:
+  build: .
+  command: python ./tests/manage.py test
+  volumes:
+    - .:/home/docker/ghostrunner

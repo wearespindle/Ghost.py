@@ -8,15 +8,11 @@ RUN apt-get update && apt-get install -y apt-utils python-software-properties su
 RUN apt-get update && apt-get install -y \
     wget \
     curl \
-    dbus \
     vim \
     python \
     python-dev \
     python-distribute \
     python-pip \
-    libmysqlclient-dev \
-    python-mysqldb \
-    git \
     build-essential \
     ipython \
     xvfb \
@@ -30,7 +26,7 @@ ENV HOME /home/docker
 
 RUN pip install -U pip # make sure the newest version of pip is used.
 # Install python pip packages.
-ADD requirements.txt $HOME/requirements.txt
+ADD tests/requirements.txt $HOME/requirements.txt
 RUN pip install -r $HOME/requirements.txt
 RUN rm $HOME/requirements.txt
 

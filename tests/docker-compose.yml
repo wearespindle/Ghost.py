@@ -1,8 +1,0 @@
-web:
-  build: .
-  command: python manage.py test
-  volumes:
-    - .:/home/docker/ghostrunner/tests
-    - /tmp/.X11-unix:/tmp/.X11-unix/:ro # must be removed when Compose supports -v option
-  ports:
-    - 8081:8081
