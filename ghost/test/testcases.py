@@ -47,6 +47,8 @@ class LiveServerTestCase(LiveServerTestCase, TestCase):
         Django's LiveServerTestCase setupClass but without sqlite :memory check
         and with additional Ghost initialization.
         """
+        default_address = os.environ.get('DJANGO_LIVE_TEST_SERVER_ADDRESS', 'localhost:8090-9000')
+        os.environ['DJANGO_LIVE_TEST_SERVER_ADDRESS'] = default_address
         # Prevents transaction rollback errors from the server thread. Removed
         # as from Django 1.8.
         try:
