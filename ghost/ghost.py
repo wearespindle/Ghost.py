@@ -344,15 +344,16 @@ class Ghost(object):
         self.ignore_ssl_errors = ignore_ssl_errors
         self.loaded = True
 
-        if sys.platform.startswith('linux') and ('DISPLAY' not in os.environ or os.environ['DISPLAY'] == ':99') and not hasattr(Ghost, 'xvfb'):
+        if sys.platform.startswith('linux') and ('DISPLAY' not in os.environ or os.environ['DISPLAY'] == ':99'):
             try:
-                os.environ['DISPLAY'] = ':99'
+                self.logger.debug('Using Xvfb graphics.')
                 process = ['Xvfb', ':99', '-pixdepths', '32', '-fp', '/usr/share/fonts/X11/100dpi/', '-once']
                 Ghost.xvfb = subprocess.Popen(process, stdout=open(os.devnull, 'w'), stderr=subprocess.STDOUT)
             except OSError:
                 raise Error('Xvfb is required to a ghost run outside ' +
                             'an X instance')
-
+        else:
+            self.logger.debug('Using X11 graphics.')
         self.display = display
 
         if not Ghost._app:
@@ -675,6 +676,7 @@ class Ghost(object):
         del self.page
         del self.main_frame
         if hasattr(self, 'xvfb'):
+            self.logger.debug('Terminating xvfb.')
             self.xvfb.terminate()
 
     @can_load_page
