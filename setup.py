@@ -12,9 +12,7 @@ setup(
     long_description=open('README.rst').read(),
     data_files=[('ghost', ['README.rst', ])],
     include_package_data=True,
-    install_requires=[
-        'Django>=1.4',
-    ],
+    install_requires=[],
     packages=find_packages(),
     zip_safe=False,
     platforms='any',
