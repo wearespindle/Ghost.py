@@ -18,7 +18,7 @@ except ImportError:
 
 from .logger import configure
 
-__version__ = "0.2.0"
+__version__ = "1.0.2"
 
 if PY3:
     unicode = str
@@ -328,7 +328,6 @@ class Ghost(object):
                  ignore_ssl_errors=True, plugins_enabled=False, java_enabled=False, javascript_enabled=True,
                  plugin_path=['/usr/lib/mozilla/plugins', ], download_images=True, show_scrollbars=True,
                  network_manager=NetworkAccessManager, web_page_class=GhostWebPage):
-
         if not binding:
             raise Exception("Ghostrunner requires PyQT5")
 
@@ -344,16 +343,17 @@ class Ghost(object):
         self.ignore_ssl_errors = ignore_ssl_errors
         self.loaded = True
 
-        if sys.platform.startswith('linux') and ('DISPLAY' not in os.environ or os.environ['DISPLAY'] == ':99'):
+        if os.environ.get('XVFB'):
             try:
                 self.logger.debug('Using Xvfb graphics.')
-                process = ['Xvfb', ':99', '-pixdepths', '32', '-fp', '/usr/share/fonts/X11/100dpi/', '-once']
-                Ghost.xvfb = subprocess.Popen(process, stdout=open(os.devnull, 'w'), stderr=subprocess.STDOUT)
+                from xvfbwrapper import Xvfb
+                self.vdisplay = Xvfb()
+                self.vdisplay.start()
+
             except OSError:
-                raise Error('Xvfb is required to a ghost run outside ' +
-                            'an X instance')
+                raise Error('Xvfb is required to a ghost run outside an X instance')
         else:
-            self.logger.debug('Using X11 graphics.')
+            self.logger.debug('Using Host X11 graphics.')
         self.display = display
 
         if not Ghost._app:
@@ -677,7 +677,7 @@ class Ghost(object):
         del self.main_frame
         if hasattr(self, 'xvfb'):
             self.logger.debug('Terminating xvfb.')
-            self.xvfb.terminate()
+            self.vdisplay.stop()
 
     @can_load_page
     def fill(self, selector, values):

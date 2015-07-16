@@ -12,7 +12,9 @@ setup(
     long_description=open('README.rst').read(),
     data_files=[('ghost', ['README.rst', ])],
     include_package_data=True,
-    install_requires=[],
+    install_requires=[
+        "xvfbwrapper>=0.2.4"
+    ],
     packages=find_packages(),
     zip_safe=False,
     platforms='any',
