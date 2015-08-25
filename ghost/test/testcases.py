@@ -57,9 +57,17 @@ class LiveServerTestCase(LiveServerTestCase, TestCase):
         except ImportError:
             pass
         super(LiveServerTestCase, cls).setUpClass()
+
         # Server is up and running, start up a Ghost instance.
         if not hasattr(cls, 'ghost'):
-            cls.ghost = Ghost(display=cls.display, wait_timeout=cls.wait_timeout, log_level=cls.log_level)
+            try:
+                cls.ghost = Ghost(display=cls.display, wait_timeout=cls.wait_timeout, log_level=cls.log_level)
+            except:
+                # If we fail to initialize a Ghost instance, we should
+                # still clean up any daemon threads the parent
+                # LiveServerTestCase made.
+                super(LiveServerTestCase, cls).tearDownClass()
+                raise
 
     @classmethod
     def tearDownClass(cls):
