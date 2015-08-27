@@ -6,7 +6,6 @@ import uuid
 from contextlib import contextmanager
 import codecs
 import logging
-import subprocess
 from functools import wraps
 try:
     # Python 2.x
@@ -18,7 +17,7 @@ except ImportError:
 
 from .logger import configure
 
-__version__ = "1.0.2"
+__version__ = "1.0.3"
 
 if PY3:
     unicode = str
