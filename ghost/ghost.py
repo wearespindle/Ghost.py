@@ -674,7 +674,7 @@ class Ghost(object):
         del self.manager
         del self.page
         del self.main_frame
-        if hasattr(self, 'xvfb'):
+        if hasattr(self, 'vdisplay'):
             self.logger.debug('Terminating xvfb.')
             self.vdisplay.stop()
 
