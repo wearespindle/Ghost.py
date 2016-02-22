@@ -101,7 +101,7 @@ class LiveServerTestCase(LiveServerTestCase, TestCase):
                         pass
 
         if submit:
-            self.ghost.evaluate('document.querySelector("%s").submit()' % form_selector, expect_loading=True)
+            return self.ghost.evaluate('document.querySelector("%s").submit()' % form_selector, expect_loading=True)
 
     @property
     def js_errors(self):
