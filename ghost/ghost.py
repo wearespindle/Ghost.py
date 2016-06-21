@@ -283,7 +283,7 @@ def replyReadyRead(reply):
     if not hasattr(reply, 'data'):
         reply.data = 'empty'
 
-    reply.data += reply.peek(reply.bytesAvailable())
+    reply.data += (reply.peek(reply.bytesAvailable())).data().decode(encoding='latin1')
 
 
 class NetworkAccessManager(QNetworkAccessManager):
