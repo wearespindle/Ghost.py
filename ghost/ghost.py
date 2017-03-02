@@ -283,7 +283,7 @@ def replyReadyRead(reply):
     if not hasattr(reply, 'data'):
         reply.data = 'empty'
 
-    reply.data += reply.peek(reply.bytesAvailable())
+    reply.data += (reply.peek(reply.bytesAvailable())).data().decode(encoding='latin1')
 
 
 class NetworkAccessManager(QNetworkAccessManager):
@@ -826,7 +826,7 @@ class Ghost(object):
         request = QNetworkRequest(QUrl(address))
         request.CacheLoadControl(QNetworkRequest.PreferCache)
         for header in headers:
-            request.setRawHeader(header, headers[header])
+            request.setRawHeader(str(header).encode(), str(headers[header]).encode())
         self._auth = auth
         # This avoids recursion.
         self._auth_attempt = 0
